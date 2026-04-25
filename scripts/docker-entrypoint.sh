@@ -60,18 +60,22 @@ if [[ "$SOURCE_URL" == *"#"* ]]; then
   SOURCE_URL="${SOURCE_URL%%#*}"
 fi
 
-# Inject token if provided
+# Always parse host, path, and protocol from SOURCE_URL so that they are
+# available for the credential-scrub step regardless of which auth path is taken.
+GIT_HOST="${SOURCE_URL#*://}"
+GIT_HOST="${GIT_HOST%%/*}"   # keep only the hostname (may include user:pass@ for Gitea)
+# Variant with any embedded credentials stripped — used for the persisted
+# remote URL so that PATs never leak into .git/config.
+# When SOURCE_URL has no credentials this is identical to GIT_HOST.
+GIT_HOST_PUBLIC="${GIT_HOST##*@}"
+GIT_PATH="/${SOURCE_URL#*://*/}"
+[[ "/${SOURCE_URL}" == "${GIT_PATH}" ]] && GIT_PATH="/"
+PROTOCOL="${SOURCE_URL%%://*}"
+
+# Inject token if provided (GitHub / GIT_TOKEN path)
 GIT_TOKEN="${GIT_TOKEN:-$GITHUB_TOKEN}"
 if [[ -n "$GIT_TOKEN" ]]; then
-  GIT_HOST="${SOURCE_URL#*://}"
-  GIT_HOST="${GIT_HOST%%/*}"
-  GIT_PATH="/${SOURCE_URL#*://*/}"
-  [[ "/${SOURCE_URL}" == "${GIT_PATH}" ]] && GIT_PATH="/"
-  if [[ "$SOURCE_URL" == *"#"* ]]; then
-    GIT_PATH="${GIT_PATH%%#*}"
-  fi
-  PROTOCOL="${SOURCE_URL%%://*}"
-  SOURCE_URL="${PROTOCOL}://${GIT_TOKEN}@${GIT_HOST}${GIT_PATH}"
+  SOURCE_URL="${PROTOCOL}://${GIT_TOKEN}@${GIT_HOST_PUBLIC}${GIT_PATH}"
 fi
 
 rm -rf "$WORK_DIR"
@@ -81,10 +85,10 @@ else
   git clone --depth 1 "$SOURCE_URL" "$WORK_DIR"
 fi
 
-# Scrub PAT from origin remote — token must not persist to .git/config
-if [[ -n "$GIT_TOKEN" ]]; then
-  git -C "$WORK_DIR" remote set-url origin "${PROTOCOL}://${GIT_HOST}${GIT_PATH}"
-fi
+# Scrub credentials from origin remote — tokens and embedded credentials must
+# not persist to .git/config. This covers both the GIT_TOKEN path and the
+# Gitea embedded-credential path (https://user:pass@host/path).
+git -C "$WORK_DIR" remote set-url origin "${PROTOCOL}://${GIT_HOST_PUBLIC}${GIT_PATH}"
 
 write_commit_info "$WORK_DIR"
 
