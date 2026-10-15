@@ -115,15 +115,17 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 7: behavioral verification — GIT_TOKEN path uses GIT_HOST_PUBLIC
+# Test 7: GIT_TOKEN is never embedded in the clone URL
 #
-# When GIT_TOKEN is set, the injected URL must use GIT_HOST_PUBLIC (not
-# GIT_HOST which might already contain embedded creds from SOURCE_URL).
+# Superseded by the http.extraheader auth fix (issue #15): GIT_TOKEN must no
+# longer be embedded in the clone URL at all — it is passed via a scoped
+# http.<url>/.extraheader config override instead. This also covers the
+# clone call sites directly.
 # ---------------------------------------------------------------------------
-if grep -qF '${GIT_TOKEN}@${GIT_HOST_PUBLIC}' "$ENTRYPOINT"; then
-  pass "GIT_TOKEN injection uses GIT_HOST_PUBLIC (no double-embedding of creds)"
+if grep -qF '${GIT_TOKEN}@' "$ENTRYPOINT"; then
+  fail "GIT_TOKEN is still embedded in a URL — credentials would leak via clone args/stderr"
 else
-  fail "GIT_TOKEN injection does not reference GIT_HOST_PUBLIC"
+  pass "GIT_TOKEN is never embedded in a URL"
 fi
 
 # ---------------------------------------------------------------------------
